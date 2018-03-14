@@ -1,0 +1,653 @@
+<!DOCTYPE = html>
+<html>
+<head>
+  <script src="JS/imageProcessing.js"></script>
+  <script src="JS/three.js"></script>
+  <script src="JS/OrbitControls.js"></script>
+  <script src="JS/Detector.js"></script>
+  <script src="JS/SubdivisionModifier.js"></script>
+  <script src="JS/BufferSubdivisionModifier.js"></script>
+</head>
+<body>
+  <div style="width: 100%; overflow: hidden;">
+    <div id="canvas" style = "width:600px; float: left;"></div>
+    <div id="canvas2" style = "margin-left:610px;"></div>
+  </div>
+  <div id="options"></div>
+  <script>
+    //get canvas object, create rendering context
+    var winWidth = window.innerWidth;
+    var winHeight = window.innerHeight;
+//    document.getElementById("myCanvas").setAttribute("width",winWidth*0.9);
+//    document.getElementById("myCanvas").setAttribute("height",winHeight*0.9);
+
+    var canvas = document.createElement("canvas");
+    canvas.id = "myCanvas";
+    var canvasWidth = parseInt(document.getElementById("canvas").style.width,10);
+    var canvasHeight = canvasWidth;
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    canvas.style.border = "1px solid #AFAFAF";
+    document.getElementById("canvas").appendChild(canvas);
+    window.addEventListener("dragover",function(event){
+      event.preventDefault();
+    },false);
+    window.addEventListener("drop",function(event){
+      timer = Math.round(performance.now());
+      var files = event.dataTransfer.files;
+      if(files.length > 0){
+        var file = files[0];
+        if(typeof FileReader !== "undefined" && file.type.indexOf("image")!=-1){
+          var reader = new FileReader();
+          reader.onload = function(event){console.clear();
+            img1.src =event.target.result;console.log("Image Dropped "+Math.round(performance.now()-timer)+"ms")
+          };
+          reader.readAsDataURL(file);
+        };
+      };
+      event.preventDefault();
+    },false);
+    var crc = canvas.getContext("2d");
+    crc.fillText("Drop an fingerprint image here", canvasWidth*0.5, canvasHeight*0.5);
+    var imageData = [];
+    var myImageData;
+    class Selection {
+      constructor(x,y,w,h){
+        this.x=x;
+        this.y=y;
+        this.h=h;
+        this.w=w;
+        this.data = [];
+      }
+    }
+    var selection = new Selection();
+    var img1 = document.createElement("img");
+    //img1.src = "Img/Test27.jpg";
+    img1.onload = function (){//console.log("img load success")
+      let drawScale = 1;
+      let scaleDirection = "y";
+      imageData = [];
+      if(img1.width/canvasWidth > img1.height/canvasHeight){
+        scaleDirection = "x";
+      }
+      if(scaleDirection === "x"){
+        drawScale = canvasWidth/img1.width;
+        document.getElementById("myCanvas").setAttribute("height",img1.height*drawScale);
+        document.getElementById("myCanvas").setAttribute("width",img1.width*drawScale);
+      }else{
+        drawScale = canvasHeight/img1.height;
+        document.getElementById("myCanvas").setAttribute("width",img1.width*drawScale);
+        document.getElementById("myCanvas").setAttribute("height",img1.height*drawScale);
+      }
+      crc.drawImage(img1,0,0,img1.width*drawScale,img1.height*drawScale);
+      myImageData = crc.getImageData(0,0,document.getElementById("myCanvas").width,document.getElementById("myCanvas").height);
+      for (let i=0;i<myImageData.width;i++){
+        for (let j=0;j<myImageData.height;j++){
+          let index = i+j*myImageData.width;
+          imageData[index] = (myImageData.data[4*index]+myImageData.data[1+4*index]+myImageData.data[2+4*index])/3;
+        }
+      }
+      console.log("image data collected "+Math.round(performance.now()-timer)+"ms")
+      run = true;
+      newImage = true;
+      initWorkers();
+      mainLoop();
+    }
+    {//options
+      var options = document.getElementById("options");
+      var printMaterial = ["Silver", "Titanium", "18k Gold", "Platinum"];
+      var printMaterialSelect;
+      for (let i =0; i<printMaterial.length; i++){
+        let button = document.createElement("INPUT");
+        button.type = "radio";
+        button.id = "buttonMaterial"+i;
+        button.name = "printMaterial";
+        button.value = printMaterial[i];
+        options.appendChild(button);
+        let label = document.createElement("label");
+        label.setAttribute("for","buttonMaterial"+i);
+        label.innerHTML = printMaterial[i];
+        options.appendChild(label);
+      }
+      options.innerHTML += "<br>";
+      var embossSide = ["Inside", "Outside"];
+      var embossSideSelect;
+      for (let i = 0; i<embossSide.length; i++){
+        let button = document.createElement("INPUT");
+        button.type = "radio";
+        button.id = "buttonSide"+i;
+        button.name = "embossSide";
+        button.value = embossSide[i];
+        options.appendChild(button);
+        let label = document.createElement("label");
+        label.setAttribute("for","buttonSide"+i);
+        label.innerHTML = embossSide[i];
+        options.appendChild(label);
+      }
+      options.innerHTML += "<br>";
+      var shape = ["Eliptical", "D-Shape", "Flat", "Round"];
+      var shapeSelect;
+      for (let i = 0; i<shape.length; i++){
+        let button = document.createElement("INPUT");
+        button.type = "radio";
+        button.id = "buttonShape"+i;
+        button.name = "shape";
+        button.value = shape[i];
+        options.appendChild(button);
+        let label = document.createElement("label");
+        label.setAttribute("for","buttonShape"+i);
+        label.innerHTML = shape[i];
+        options.appendChild(label);
+      }
+      var sizeOption = 9;
+      let slider = document.createElement("INPUT");
+      slider.type = "range";
+      slider.id = "buttonSlider";
+      slider.min = "2";
+      slider.max = "13.5";
+      slider.step = "0.5";
+      slider.value = sizeOption;
+      let label = document.createElement("label");
+      options.innerHTML += "<br>";
+      options.appendChild(slider);
+      label.setAttribute("for","buttonSlider");
+      label.id = "sliderLabel";
+      label.innerHTML = "Size: " + slider.value;
+      options.appendChild(label);
+
+
+      printMaterialSelect = 3;
+      embossSideSelect = 1;
+      shapeSelect = 3;
+      document.getElementById("buttonMaterial"+printMaterialSelect).checked = "checked";
+      document.getElementById("buttonSide" + embossSideSelect).checked = "checked";
+      document.getElementById("buttonShape" + shapeSelect).checked = "checked";
+      for (let i = 0; i<printMaterial.length; i++){document.getElementById("buttonMaterial"+i).addEventListener("click",function(){setOptions();},false)}
+      for (let i = 0; i<embossSide.length; i++){document.getElementById("buttonSide"+i).addEventListener("click",function(){setOptions();},false)}
+      for (let i = 0; i<shape.length; i++){document.getElementById("buttonShape"+i).addEventListener("click",function(){setOptions();},false)}
+      document.getElementById("buttonSlider").addEventListener("input",function(){document.getElementById("sliderLabel").innerHTML = "Size: " + slider.value;setOptions();},false)
+      function setOptions(){
+        for (let i = 0; i<printMaterial.length; i++){if(document.getElementById("buttonMaterial"+i).checked){printMaterialSelect = i;}}
+        for (let i = 0; i<embossSide.length; i++){if(document.getElementById("buttonSide"+i).checked){embossSideSelect = i;}}
+        for (let i = 0; i<shape.length; i++){if(document.getElementById("buttonShape"+i).checked){shapeSelect = i;}}
+        sizeOption = document.getElementById("buttonSlider").value;
+        timer = performance.now();
+        crc.clearRect(0,0,canvas.width,canvas.height);
+        updateImageData();
+        reDraw();
+        updateSelection();
+        drawSelection();
+        copySelection();
+        updateGeometry();
+      }
+    }
+
+//global var
+    var run = false;
+    var timer = 0;
+    var doneDragging = true;
+    var keys = {
+      mouseClick:false,
+      mouseRightClick:false,
+      mouseX: 0,
+      mouseY: 0
+    };
+    var newImage = false;
+    var myWorker = [];
+    var workerDone = [];
+    var totalWorkers = 6;
+    var pixelCountMax = 0;
+    var photocopyResult;
+    function initWorkers(){
+      for(let i = 0; i < totalWorkers;i++){
+        myWorker[i] = new Worker("JS/imageProcessing.js");
+        workerDone[i] = false;
+        myWorker[i].onmessage = function(e){
+          if(e.data[0]>=pixelCountMax){
+            pixelCountMax = e.data[0];
+            photocopyResult = e.data[1];
+          }
+          workerDone[i] = true;
+          let allDone = true;
+          for(let j = 0; j<totalWorkers;j++){
+            allDone = allDone && workerDone[j];
+          }
+          if(allDone){
+            imageData = photocopyResult.slice();
+            console.log("done photocopy " +Math.round(performance.now()-timer)+"ms")
+            mainLoop2();
+          }
+        }
+      }
+    }
+
+//event listensers
+    canvas.addEventListener("mousedown",function(event){
+      if (event.defaultPrevented) {return;}
+      if(run){
+        keys.mouseClick = true;
+        let rect = canvas.getBoundingClientRect();
+        keys.mouseX = event.clientX-rect.left;
+        keys.mouseY = event.clientY-rect.top;console.log("mousedown")
+      }
+      //mainLoop();
+      event.preventDefault();
+      event.returnValue=false;
+    },false);
+    canvas.addEventListener("mousemove",function(event){
+      if (event.defaultPrevented) {return;}
+      if(run&&keys.mouseClick){
+        timer = Math.round(performance.now());
+        doneDragging = false;
+        console.clear();
+        let rect = canvas.getBoundingClientRect();
+        selection.x += event.clientX-rect.left-keys.mouseX;
+        selection.x =Math.max(0,selection.x);
+        selection.x = Math.min(myImageData.width-selection.w,selection.x);
+        selection.y += event.clientY-rect.top-keys.mouseY;
+        selection.y =Math.max(0,selection.y);
+        selection.y = Math.min(myImageData.height-selection.h,selection.y);
+        keys.mouseX = event.clientX-rect.left;
+        keys.mouseY = event.clientY-rect.top;
+        crc.clearRect(0,0,canvas.width,canvas.height);
+        reDraw();
+        drawSelection();
+        copySelection();
+        updateGeometry();
+      }
+      event.preventDefault();
+      event.returnValue=false;
+    },false)
+    canvas.addEventListener("mouseup",function(event){
+      if (event.defaultPrevented) {return;}
+      if(run&&keys.mouseClick){
+        keys.mouseClick=false;
+        doneDragging = true;
+        updateGeometry();
+      }
+      event.preventDefault();
+      event.returnValue=false;
+    },false);
+    canvas.addEventListener("mouseleave",function(event){
+      if (event.defaultPrevented) {return;}
+      keys.mouseClick=false;
+      doneDragging = true;
+      if(run&&keys.mouseClick){
+        updateGeometry();
+      }
+      event.preventDefault();
+      event.returnValue=false;
+    },false);
+    window.addEventListener("contextmenu",function(event){
+      if (event.defaultPrevented) {return;}
+      keys.mouseRightClick = true;
+      let rect = canvas.getBoundingClientRect();
+      keys.mouseX -= event.clientX-rect.left;
+      keys.mouseY -= event.clientY-rect.top;
+
+      event.preventDefault();
+      event.returnValue=false;
+    },false);
+
+//fuctions
+    function processMouseClick(){
+      if(keys.mouseClick||keys.mouseRightClick){
+
+      }
+      keys.mouseClick = false;
+      keys.mouseRightClick = false;
+    }
+    function blurImage(r){console.log("Begin Blur "+Math.round(performance.now()-timer)+"ms");
+      let tempData = imageData.slice();
+      gaussBlur_4(tempData,imageData,myImageData.width,myImageData.height,r);
+      //console.log("Blur Complete");
+    }
+    function photocopyImageMulti(r){
+      let imageWidth = myImageData.width;
+      waiting = true; console.log("begin photocopy " +Math.round(performance.now()-timer)+"ms")
+      for(trial = 0;trial<totalWorkers;trial++){
+        myWorker[trial].postMessage([imageData,myImageData.width,trial,r]);
+      }
+    }
+    function photocopyImage(r){//console.log("begin photocopy");
+      let pixCountMax =0;
+      let trialData = imageData.slice();
+      let imageWidth = myImageData.width;
+      let imageHeight = myImageData.height;
+      for(trial = 0;trial<4;trial++){
+        let tempData = imageData.slice();
+        let preBlurData = imageData.slice();
+        let blurData = imageData.slice();
+        gaussBlur_4(tempData,preBlurData,imageWidth,imageHeight,trial);
+        tempData = preBlurData.slice();
+        let maxDiff = 0;
+        let avgDiff = 0;
+        let pixCount = 0;
+        gaussBlur_4(tempData,blurData,imageWidth,imageHeight,r);
+        tempData = preBlurData.slice();
+        for(let i = 0; i<tempData.length;i++){
+          let avgVal = blurData[i];
+          let diff = Math.round(100*preBlurData[i]/avgVal);
+          maxDiff=Math.max(maxDiff,diff);
+          avgDiff+=diff;
+        }
+        avgDiff/=tempData.length;
+        for(let i = 0; i<tempData.length;i++){
+          let avgVal = blurData[i];
+          let diff = Math.round(100*preBlurData[i]/avgVal);
+          if(diff<avgDiff){
+            tempData[i]=0;
+          }else {
+            tempData[i]=255;
+          }
+        }
+        for(let i = imageWidth+1; i<tempData.length-imageWidth-1;i++){
+          if(!tempData[i]
+            && tempData[i]===tempData[i+1]
+            && tempData[i]===tempData[i-1]
+            && tempData[i] === tempData[i+imageWidthh]
+            && tempData[i] === tempData[i+imageWidth+1]
+            && tempData[i] === tempData[i+imageWidth-1]
+            && tempData[i] === tempData[i-imageWidth]
+            && tempData[i] === tempData[i-imageWidth+1]
+            && tempData[i] === tempData[i-imageWidth-1]){
+            pixCount++;
+          }
+        }
+        if(pixCount>pixCountMax){
+          pixCountMax=pixCount;
+          trialData = tempData.slice();
+        }
+        console.log(trial + ":" + pixCount)
+      }
+      imageData = trialData.slice();
+    //console.log("done photocopy")
+    }
+    function updateImageData(){
+
+      for (let i=0;i<myImageData.width;i++){
+        for (let j=0;j<myImageData.height;j++){
+          myImageData.data[4*(i+j*myImageData.width)] = imageData[i+myImageData.width*j];
+          myImageData.data[1+4*(i+j*myImageData.width)] = imageData[i+myImageData.width*j];
+          myImageData.data[2+4*(i+j*myImageData.width)] = imageData[i+myImageData.width*j];
+        }
+      }
+    }
+    function reDraw(){
+      crc.putImageData(myImageData,0,0);
+    }
+    function updateSelection(){
+      selection.data = [];
+      selection.x = Math.round(myImageData.width*0.5-myImageData.height*0.1);
+      selection.y = Math.round(myImageData.height*0.1);
+      selection.w = Math.round(myImageData.height*0.2);
+      selection.h = Math.round(myImageData.height*0.8);
+      newImage = true;
+    }
+    function drawSelection(){
+      crc.strokeStyle="red";
+      crc.lineWidth="3";
+      crc.beginPath();
+      crc.rect(selection.x,selection.y,selection.w,selection.h);
+      crc.stroke();
+    }
+    function copySelection(){console.log("begin selection copy " +Math.round(performance.now()-timer)+"ms");
+      let featherW = Math.round(selection.w*0.3);
+      let featherH = Math.round(selection.w*0.08);
+      if(shapeSelect === 0 ){featherW = Math.round(selection.w*0.5);}
+      let piFeatherW = Math.PI/featherW;
+      let piFeatherH = Math.PI/featherH;
+      if(shapeSelect === 0 ){piFeatherW*=2;}
+      let featherWK = [];
+      let featherHK = [];
+      for (let i = 0; i < featherW; i++){
+        featherWK[i] = 1-(Math.cos(i*piFeatherW)+1)/2;
+      }
+      for (let i = 0; i < featherH; i++){
+        featherHK[i] = 1-(Math.cos(i*piFeatherH)+1)/2;
+      }
+      for(let i = 0; i<selection.w;i++){
+        for(let j = 0; j<selection.h;j++){
+          let index = i+j*selection.w;
+          selection.data[index]=(255-imageData[selection.x+i+(selection.y+j)*myImageData.width]);
+        }
+      }
+      let loopEnd = [];
+      for(let i = 0; i<selection.w;i++){
+        loopEnd[i] = 0.5*(selection.data[i]+selection.data[i+selection.h-1]);
+      }
+      for(let i = 0; i<selection.w;i++){
+        for(let j = 0; j<selection.h;j++){
+          let index = i+j*selection.w;
+          if(j<featherH||j>selection.h-featherH){
+            let k2 = 1-featherHK[Math.min(j,selection.h-j)];
+            selection.data[index]=selection.data[index]*featherHK[Math.min(j,selection.h-j)];
+            selection.data[index] += k2*loopEnd[i];
+          }
+          if(i<featherW||i>selection.w-featherW){
+            selection.data[index]=selection.data[index]*featherWK[Math.min(i,selection.w-i)];
+            if(shapeSelect === 0 &&(i<featherW*0.5||i>selection.w-featherW*0.5)){
+              //selection.data[index]=0;
+            }
+          }
+        }
+      }
+    }
+    function mainLoop (){
+      blurImage(1);
+      if(window.Worker){
+        pixelCountMax = 0;
+        for(let i = 0; i < totalWorkers;i++){workerDone[i] = false;}
+        photocopyImageMulti(2);
+      }else{
+        photocopyImage(2);
+        mainLoop2();
+      }
+    }
+    function mainLoop2(){
+      blurImage(2);
+      crc.clearRect(0,0,canvas.width,canvas.height);
+      updateImageData();
+      reDraw();
+      updateSelection();
+      drawSelection();
+      copySelection();
+      updateGeometry();
+    }
+
+
+
+  var scene = new THREE.Scene();
+  var geometry = new THREE.Geometry();
+  var camera = new THREE.PerspectiveCamera( 50, 1, 0.1, 1000 );
+  var renderer = new THREE.WebGLRenderer();
+  var controls = new THREE.OrbitControls(camera,renderer.domElement);
+  function init3D(){
+    renderer.setSize( 600, 600 );
+    renderer.setClearColor( 0xffffff );
+    document.getElementById("canvas2").appendChild( renderer.domElement );
+    controls.addEventListener( 'change', render ); // remove when using animation loop
+    camera.position.set(15,0,25);
+    camera.lookAt(0,0,0);
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.5;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.5;
+    controls.enableKeys = false;
+    controls.enablePan = false;
+    controls.enableZoom = false;
+    controls.update();
+    // lights
+    var light = new THREE.DirectionalLight( 0xffffff );
+    light.position.set( 1, 1, 1 );
+    scene.add( light );
+    var light = new THREE.DirectionalLight( 0xdddddd );
+    light.position.set( -1, -1, -1 );
+    scene.add( light );
+    var light = new THREE.AmbientLight( 0xaaaaaa );
+    scene.add( light );
+    var animate = function () {
+      requestAnimationFrame( animate );
+      controls.update();
+      renderer.render(scene, camera);
+    };
+    animate();
+    function render() {
+      renderer.render( scene, camera );
+    }
+  }
+  function updateGeometry(){
+    console.log("clean up "+Math.round(performance.now()-timer)+"ms")
+    for (let i = scene.children.length - 1; i >= 0; i--) {
+        if(scene.children[i].type === "Mesh"||scene.children[i].type === "Points")
+            scene.remove(scene.children[i]);
+    }
+    geometry.dispose();
+    initMeshPoints();
+    modifyMeshPoints();
+    createGeometry();
+    //var material = new THREE.MeshBasicMaterial( { wireframe: true } );
+    let points = new THREE.Points(geometry, new THREE.PointsMaterial( { color: 0x888888 , size: 0.05} ) );
+    if(!doneDragging){scene.add( points );}
+    //var origin = new THREE.Geometry();
+    //origin.vertices.push(new THREE.Vector3(0,0,0));
+    //scene.add(new THREE.Points(origin, new THREE.PointsMaterial( { color: 0xFFFFFF , size: 0.2} ) ) );
+    console.log("subdivision "+Math.round(performance.now()-timer)+"ms")
+    var modifier = new THREE.BufferSubdivisionModifier(1);
+    //geometry = modifier.modify(geometry);console.log("subdivision done")
+    if(doneDragging){
+      //let map = new THREE.CubeTextureLoader()
+			//		.setPath( '/Img/' )
+			//		.load( [ 'px.jpg', 'nx.jpg', 'py.jpg', 'ny.jpg', 'pz.jpg', 'nz.jpg' ] );
+      let material;
+      if(printMaterialSelect === 0){material = new THREE.MeshStandardMaterial( { color: 0xf7f5e9, metalness: 0.7, flatShading: false ,side: THREE.DoubleSide} );}
+      if(printMaterialSelect === 1){material = new THREE.MeshStandardMaterial( { color: 0x8a7f73, metalness: 0.7,  flatShading: false ,side: THREE.DoubleSide} );}
+      if(printMaterialSelect === 2){material = new THREE.MeshStandardMaterial( { color: 0xffc356, metalness: 0.7,  flatShading: false ,side: THREE.DoubleSide} );}
+      if(printMaterialSelect === 3){material = new THREE.MeshStandardMaterial( { color: 0xaba295, metalness: 0.7,  flatShading: false ,side: THREE.DoubleSide} );}
+      //material = new THREE.MeshBasicMaterial( { color: 0xbbbbbb} );
+      let mesh = new THREE.Mesh( geometry, material );
+      scene.add( mesh );console.log("pre render "+Math.round(performance.now()-timer)+"ms")
+    }
+    renderer.render( scene, camera );
+    newImage = false;
+  }
+
+  var ringCenterRadius = 10;
+  var ringInnerOffset = 0.6;
+  var ringOutterOffset = 1.5;
+  var ringNomRadius = Math.max(ringInnerOffset,ringOutterOffset);
+  var ringWidth = 8;
+  var meshDivSection;
+  var meshDivAround;
+  var meshPoints = [];
+  var meshPointsOrg = [];
+  var tempPoints = [];
+  function initMeshPoints(){console.log("initMesh "+Math.round(performance.now()-timer)+"ms")
+    if(newImage){
+      meshDivSection = selection.w;
+      meshDivAround = selection.h;
+      meshPointsOrg = [];
+      meshPoints = [];
+      tempPoints = [];
+      let angleSection = 2*Math.PI/meshDivSection;
+      let angleAround = 2*Math.PI/meshDivAround;
+      for(let i=0;i<meshDivAround;i++){
+        let iAngle = i*angleAround;
+        let iAngleCos = Math.cos(iAngle);
+        let iAngleSin = Math.sin(iAngle);
+        tempPoints[i] = new THREE.Vector3();
+        tempPoints[i].x = ringCenterRadius*iAngleCos;
+        tempPoints[i].y = ringCenterRadius*iAngleSin;
+        tempPoints[i].z = 0;
+        for(let j=0;j<meshDivSection;j++){
+          let index = j+i*meshDivSection;
+          let jAngle = j*angleSection;
+          meshPointsOrg[index] = new THREE.Vector3();
+          meshPointsOrg[index].x = tempPoints[0].x + ringNomRadius*Math.cos(jAngle);
+          meshPointsOrg[index].y = tempPoints[0].y;
+          meshPointsOrg[index].z = tempPoints[0].z + ringNomRadius*Math.sin(jAngle);
+          let r = meshPointsOrg[index].x;
+          meshPointsOrg[index].x = r*iAngleCos;
+          meshPointsOrg[index].y = r*iAngleSin;
+          meshPoints[index] = new THREE.Vector3();
+        }
+      }
+    }
+  }
+  function modifyMeshPoints(){console.log("modMesh "+Math.round(performance.now()-timer)+"ms")
+    let minData;
+    let maxData;
+    minData = Math.min.apply(null,selection.data);
+    maxData = Math.max.apply(null,selection.data);
+    let maxDistort = 0.5;
+    let ratio = maxDistort/ringNomRadius;
+    for(let i=0;i<meshDivAround;i++){
+      for(let j=0;j<meshDivSection;j++){
+        let index = j+i*meshDivSection;
+        let jOut = j - Math.round(meshDivSection*0.5);
+        if(jOut<0){jOut+=meshDivSection;}
+        let indexOutside = jOut+i*meshDivSection;
+        let indexSelection;
+        if(embossSideSelect){indexSelection = indexOutside;}
+        else{indexSelection = index;}
+        let k = THREE.Math.mapLinear(selection.data[indexSelection],minData,maxData,0,1)*ratio;
+        let k2 = 1-k;
+        meshPoints[index].x = tempPoints[i].x*k+meshPointsOrg[index].x*(k2);
+        meshPoints[index].y = tempPoints[i].y*k+meshPointsOrg[index].y*(k2);
+        meshPoints[index].z = tempPoints[i].z*k+meshPointsOrg[index].z*(k2);
+        if(shapeSelect === 0){
+          k = 0.4;
+          k2 = 1-k;
+          meshPoints[index].x = tempPoints[i].x*k+meshPoints[index].x*(k2);
+          meshPoints[index].y = tempPoints[i].y*k+meshPoints[index].y*(k2);
+
+        }
+      }
+    }
+  }
+  function createGeometry(){console.log("createGeo "+Math.round(performance.now()-timer)+"ms")
+    geometry = new THREE.Geometry();
+    for(let i=0;i<meshPoints.length;i++){
+      geometry.vertices.push(meshPoints[i]);
+    }
+    if(doneDragging){
+      for(let i=0;i<meshDivAround;i++){
+        for(let j=0;j<meshDivSection;j++){
+          let index1 = j+i*meshDivSection;
+
+          if(j < meshDivSection -1){
+            index2=index1+1;
+          }else{
+            index2=index1-j;
+          }
+          if(index1+meshDivSection<meshPoints.length){
+            index3=index1+meshDivSection;
+          }else{
+            index3=j;
+          }
+          if(index2+meshDivSection<meshPoints.length){
+            index4=index2+meshDivSection;
+          }else{
+            if(j+1<meshDivSection){
+              index4=j+1;
+            }else{
+              index4=0;
+            }
+          }
+          geometry.faces.push( new THREE.Face3( index1,index3,index2) );
+          geometry.faces.push( new THREE.Face3( index3,index4,index2) );
+        }
+      }
+    }
+    //create a new face using vertices 0, 1, 2
+    //var normal = new THREE.Vector3( 0, 1, 0 ); //optional
+    //var color = new THREE.Color( 0xffaa00 ); //optional
+    //var materialIndex = 0; //optional
+    console.log("compute normals "+Math.round(performance.now()-timer)+"ms")
+    geometry.computeFaceNormals();
+    geometry.computeVertexNormals();
+  }
+  init3D();
+  </script>
+</body>
+</html>
