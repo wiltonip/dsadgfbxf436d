@@ -1,0 +1,26 @@
+<p>
+  scene works!
+</p>
+<div> <label>Estimated price:
+        <input [ngModel]="price" placeholder="price" readonly>
+    </label>
+</div>
+<div> <label>Estimated days to deliver:
+        <input [ngModel]="daysToDeliver" placeholder="21" readonly>
+    </label>
+</div>
+<label>Ring Size<input (input)="slidebar($event)" type="range"></label>
+<br>
+<label> Gold <input name="material" value='gold' (change)="materialChange($event)" type="radio"> </label>
+<label> Platinum <input name="material" value='platinum' (change)="materialChange($event)" type="radio"> </label>
+<label>  Silver <input name="material" value='silver' (change)="materialChange($event)" type="radio"> </label>
+<label>  Titanium <input name="material" value='titanium' (change)="materialChange($event)" type="radio"> </label>
+<br>
+<label>Court<input name="shape" value="Court" (change)="ringShapeChange($event)" type="radio"> </label>
+<label>Beveled<input name="shape" value="Beveled" (change)="ringShapeChange($event)" type="radio"> </label>
+<label>Concave<input name="shape" value="Concave" (change)="ringShapeChange($event)" type="radio"> </label>
+<label>D-Shaped<input name="shape" value="DShaped" (change)="ringShapeChange($event)" type="radio"> </label>
+<label>Flat<input name="shape" value="Flat" (change)="ringShapeChange($event)" type="radio"> </label>
+<label>Halo<input name="shape" value="Halo" (change)="ringShapeChange($event)" type="radio"> </label>
+<label>FlatCourt<input name="shape" value="FlatCourt" (change)="ringShapeChange($event)" type="radio"> </label>
+<canvas #canvas></canvas>
